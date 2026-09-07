@@ -4,5 +4,17 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+}
+
+model ApiKey {
+  id        String    @id @default(uuid())
+  name      String
+  prefix    String
+  hash      String    @unique
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@index([prefix])
+  @@map("api_keys")
 }
