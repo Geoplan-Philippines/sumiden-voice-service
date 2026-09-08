@@ -1,0 +1,56 @@
+name: "DEPLOY SUMIDEN VOICE SERVICE API"
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        run: |
+          echo "TAG=latest" >> $GITHUB_ENV
+          echo "DEPLOY_PATH=docker-apps/sumiden-voice-service" >> $GITHUB_ENV
+
+      - name: Docker login
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and Push API
+        run: |
+          docker build -t geoplanoperation/sumiden-voice-service:${{ env.TAG }} -f Dockerfile .
+          docker push geoplanoperation/sumiden-voice-service:${{ env.TAG }}
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          script_stop: true
+          script: |
+            set -e
+            cd ~/${{ env.DEPLOY_PATH }}
+            echo "[MESSAGE] Preparing image for ${{ env.TAG }} in $(pwd)..."
+
+            # Export the image tag and name for docker compose
+            export TAG="${{ env.TAG }}"
+            export API_IMAGE="geoplanoperation/sumiden-voice-service:${{ env.TAG }}"
+
+            echo "[MESSAGE] Pulling latest image for api..."
+            docker compose pull api
+
+            echo "[MESSAGE] Deploying api service..."
+            docker compose up -d --force-recreate api
+
+            echo "[MESSAGE] Cleaning up old images..."
+            docker image prune -f
+
+            echo "[MESSAGE] Deployment completed successfully!"
