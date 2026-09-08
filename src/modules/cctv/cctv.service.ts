@@ -4,16 +4,18 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
+import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { TriggerSoundDTO } from './dto/trigger-sound.dto.js';
 
 @Injectable()
 export class CctvService {
   private readonly logger = new Logger(CctvService.name);
 
+  constructor(private readonly auditLogsService: AuditLogsService) {}
+
   /**
    * Triggers an audio clip playback on an Axis CCTV camera via VAPIX Media Clip API.
-   * No data is persisted to the database. The audio plays directly on the camera
-   * speaker and automatically stops when its duration completes.
+   * Each trigger is persisted to the audit_logs table for traceability.
    * Documentation: https://developer.axis.com/vapix/audio-systems/media-clip-api/
    */
   async triggerSound(dto: TriggerSoundDTO) {
@@ -51,29 +53,50 @@ export class CctvService {
 
     this.logger.log(`📡 [Axis VAPIX Request] GET ${fullVapixUrl}`);
 
+    // Strip sensitive fields before persisting
+    const { password: _pw, simulateError: _sim, ...safePayload } = dto;
+
     // Simulate error responses when requested
     if (simulateError === '400') {
       const errorMessage = `400 Bad Request: Clip index '${clip}' not found or invalid audio parameters on camera ${cameraIp}`;
       this.logger.error(`❌ [Axis VAPIX Response] HTTP 400 Bad Request - ${errorMessage}`);
+
+      await this.auditLogsService.create({
+        action: 'trigger-sound',
+        cameraIp,
+        requestPayload: safePayload,
+        status: 'error',
+        errorMessage,
+      });
+
       throw new BadRequestException(`Axis VAPIX 400 Bad Request: ${errorMessage}`);
     }
 
     if (simulateError === '500') {
       const errorMessage = `500 Internal Server Error: Audio subsystem on camera ${cameraIp}:${port} is unreachable or busy`;
       this.logger.error(`💥 [Axis VAPIX Response] HTTP 500 Internal Server Error - ${errorMessage}`);
+
+      await this.auditLogsService.create({
+        action: 'trigger-sound',
+        cameraIp,
+        requestPayload: safePayload,
+        status: 'error',
+        errorMessage,
+      });
+
       throw new InternalServerErrorException(`Axis VAPIX 500 Internal Server Error: ${errorMessage}`);
     }
 
     // Realistic Axis VAPIX response according to official documentation: "OK\nplaying=<clip>"
-    const rawVapixResponse = `OK\nplaying=${clip}`;
+    const rawVapixResponse = `OK\\nplaying=${clip}`;
     this.logger.log(`📥 [Axis VAPIX Response] HTTP 200 OK (Content-Type: text/plain)`);
     this.logger.log(`📄 [Axis VAPIX Body] "${rawVapixResponse}"`);
     this.logger.log(
       `✅ [Axis VAPIX] Sound playing on camera speaker (${cameraIp}). It will automatically stop when the clip completes.`,
     );
 
-    // Return the response directly without persisting anything to the database
-    return {
+    // Build the response
+    const response = {
       status: 'playing',
       camera: {
         ip: cameraIp,
@@ -100,5 +123,16 @@ export class CctvService {
       },
       triggeredAt: new Date().toISOString(),
     };
+
+    // Persist successful trigger to audit logs
+    await this.auditLogsService.create({
+      action: 'trigger-sound',
+      cameraIp,
+      requestPayload: safePayload,
+      responsePayload: response,
+      status: 'success',
+    });
+
+    return response;
   }
 }

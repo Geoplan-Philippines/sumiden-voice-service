@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { DatabaseModule } from './core/database/index.js';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module.js';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module.js';
 import { CctvModule } from './modules/cctv/cctv.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -9,7 +10,7 @@ import { HttpExceptionFilter } from './core/common/filters/http-exception.filter
 import { ResponseInterceptor } from './core/common/interceptors/response.interceptor.js';
 
 @Module({
-  imports: [DatabaseModule, ApiKeysModule, CctvModule],
+  imports: [DatabaseModule, ApiKeysModule, AuditLogsModule, CctvModule],
   controllers: [AppController],
   providers: [
     AppService,
