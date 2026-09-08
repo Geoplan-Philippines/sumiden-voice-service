@@ -18,3 +18,19 @@ model ApiKey {
   @@index([prefix])
   @@map("api_keys")
 }
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  action          String
+  cameraIp        String   @map("camera_ip")
+  requestPayload  Json     @map("request_payload")
+  responsePayload Json?    @map("response_payload")
+  status          String
+  errorMessage    String?  @map("error_message")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([action])
+  @@index([cameraIp])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
