@@ -16,12 +16,12 @@ export class AuditLogsService {
   }
 
   async findAll(query: GetAuditLogsDTO) {
-    const { page = 1, limit = 20, action, cameraIp, status } = query;
+    const { page = 1, limit = 20, action, cameraId, status } = query;
     const skip = (page - 1) * limit;
 
     const where = {
       ...(action && { action }),
-      ...(cameraIp && { cameraIp }),
+      ...(cameraId && { cameraId }),
       ...(status && { status }),
     };
 

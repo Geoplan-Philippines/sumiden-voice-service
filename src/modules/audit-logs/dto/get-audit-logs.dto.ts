@@ -21,7 +21,7 @@ export class GetAuditLogsDTO {
 
   @IsOptional()
   @IsString()
-  cameraIp?: string;
+  cameraId?: string;
 
   @IsOptional()
   @IsString()
