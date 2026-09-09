@@ -16,48 +16,51 @@ export class CctvService {
   /**
    * Triggers an audio clip playback on an Axis CCTV camera via VAPIX Media Clip API.
    * Looks up camera configuration from the database by cameraId.
-   * Each trigger is persisted to the audit_logs table for traceability.
+   * Every trigger attempt (both success and failed) is persisted to the audit_logs table for traceability.
    * Documentation: https://developer.axis.com/vapix/audio-systems/media-clip-api/
    */
   async triggerSound(dto: TriggerSoundDTO) {
-    // Look up camera config from database (throws NotFoundException if not found)
-    const camera = await this.camerasService.findByCameraId(dto.cameraId);
-
-    const {
-      cameraId,
-      name,
-      cameraIp,
-      port,
-      protocol,
-      username,
-      clip,
-      volume,
-      repeat,
-      audiodeviceid,
-      audiooutputid,
-    } = camera;
-
-    const authDisplay = username ? `${username}:***@` : '';
-    const baseUrl = `${protocol}://${cameraIp}:${port}`;
-
-    this.logger.log(`🔊 [Axis VAPIX] Triggering audio clip on camera "${name}" at ${baseUrl}`);
-
-    // Build the query string for /axis-cgi/mediaclip.cgi
-    const queryParams = new URLSearchParams({
-      action: 'play',
-      clip: clip.toString(),
-      volume: volume.toString(),
-      repeat: repeat.toString(),
-      audiodeviceid: audiodeviceid.toString(),
-      audiooutputid: audiooutputid.toString(),
-    });
-
-    const cgiPath = `/axis-cgi/mediaclip.cgi?${queryParams.toString()}`;
-    const fullVapixUrl = `${protocol}://${authDisplay}${cameraIp}:${port}${cgiPath}`;
-
-    this.logger.log(`📡 [Axis VAPIX Request] GET ${fullVapixUrl}`);
+    const targetCameraId = dto?.cameraId || 'UNKNOWN';
+    const requestPayload = { cameraId: dto?.cameraId };
 
     try {
+      // Look up camera config from database (throws NotFoundException if not found or inactive)
+      const camera = await this.camerasService.findByCameraId(dto.cameraId);
+
+      const {
+        cameraId,
+        name,
+        cameraIp,
+        port,
+        protocol,
+        username,
+        clip,
+        volume,
+        repeat,
+        audiodeviceid,
+        audiooutputid,
+      } = camera;
+
+      const authDisplay = username ? `${username}:***@` : '';
+      const baseUrl = `${protocol}://${cameraIp}:${port}`;
+
+      this.logger.log(`🔊 [Axis VAPIX] Triggering audio clip on camera "${name}" (${cameraId}) at ${baseUrl}`);
+
+      // Build the query string for /axis-cgi/mediaclip.cgi
+      const queryParams = new URLSearchParams({
+        action: 'play',
+        clip: clip.toString(),
+        volume: volume.toString(),
+        repeat: repeat.toString(),
+        audiodeviceid: audiodeviceid.toString(),
+        audiooutputid: audiooutputid.toString(),
+      });
+
+      const cgiPath = `/axis-cgi/mediaclip.cgi?${queryParams.toString()}`;
+      const fullVapixUrl = `${protocol}://${authDisplay}${cameraIp}:${port}${cgiPath}`;
+
+      this.logger.log(`📡 [Axis VAPIX Request] GET ${fullVapixUrl}`);
+
       // Realistic Axis VAPIX response according to official documentation: "OK\nplaying=<clip>"
       const rawVapixResponse = `OK\\nplaying=${clip}`;
       this.logger.log(`📥 [Axis VAPIX Response] HTTP 200 OK (Content-Type: text/plain)`);
@@ -101,7 +104,7 @@ export class CctvService {
       await this.auditLogsService.create({
         action: 'trigger-sound',
         cameraId,
-        requestPayload: { cameraId: dto.cameraId },
+        requestPayload,
         responsePayload: response,
         status: 'success',
       });
@@ -127,10 +130,10 @@ export class CctvService {
       try {
         await this.auditLogsService.create({
           action: 'trigger-sound',
-          cameraId,
-          requestPayload: { cameraId: dto.cameraId },
+          cameraId: targetCameraId,
+          requestPayload,
           responsePayload: errorPayload,
-          status: 'error',
+          status: 'failed',
           errorMessage: message,
         });
       } catch (auditErr) {
