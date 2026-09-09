@@ -19,10 +19,15 @@ export class AuditLogsService {
     const { page = 1, limit = 20, action, cameraId, status } = query;
     const skip = (page - 1) * limit;
 
-    const where = {
+    const where: Prisma.AuditLogWhereInput = {
       ...(action && { action }),
       ...(cameraId && { cameraId }),
-      ...(status && { status }),
+      ...(status && {
+        status:
+          status.toLowerCase() === 'failed' || status.toLowerCase() === 'error'
+            ? { in: ['failed', 'error'] }
+            : status,
+      }),
     };
 
     const [data, total] = await Promise.all([
