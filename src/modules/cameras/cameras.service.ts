@@ -36,7 +36,11 @@ export class CamerasService {
   }
 
   async findByCameraId(cameraId: string) {
-    const camera = await this.db.camera.findUnique({ where: { cameraId } });
+    let camera = await this.db.camera.findUnique({ where: { cameraId } });
+
+    if (!camera) {
+      camera = await this.db.camera.findUnique({ where: { id: cameraId } });
+    }
 
     if (!camera || !camera.isActive) {
       throw new NotFoundException(`Camera "${cameraId}" not found`);
