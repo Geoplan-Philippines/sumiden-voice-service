@@ -1,45 +1,46 @@
-import {
-  BadRequestException,
-  HttpException,
-  HttpStatus,
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-} from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
+import { CamerasService } from '../cameras/cameras.service.js';
 import { TriggerSoundDTO } from './dto/trigger-sound.dto.js';
 
 @Injectable()
 export class CctvService {
   private readonly logger = new Logger(CctvService.name);
 
-  constructor(private readonly auditLogsService: AuditLogsService) {}
+  constructor(
+    private readonly auditLogsService: AuditLogsService,
+    private readonly camerasService: CamerasService,
+  ) {}
 
   /**
    * Triggers an audio clip playback on an Axis CCTV camera via VAPIX Media Clip API.
+   * Looks up camera configuration from the database by cameraId.
    * Each trigger is persisted to the audit_logs table for traceability.
    * Documentation: https://developer.axis.com/vapix/audio-systems/media-clip-api/
    */
   async triggerSound(dto: TriggerSoundDTO) {
+    // Look up camera config from database (throws NotFoundException if not found)
+    const camera = await this.camerasService.findByCameraId(dto.cameraId);
+
     const {
+      cameraId,
+      name,
       cameraIp,
-      port = 80,
-      protocol = 'http',
+      port,
+      protocol,
       username,
-      password,
-      clip = 0,
-      volume = 100,
-      repeat = 0,
-      audiodeviceid = 0,
-      audiooutputid = 0,
-      simulateError = 'none',
-    } = dto;
+      clip,
+      volume,
+      repeat,
+      audiodeviceid,
+      audiooutputid,
+    } = camera;
 
     const authDisplay = username ? `${username}:***@` : '';
     const baseUrl = `${protocol}://${cameraIp}:${port}`;
 
-    this.logger.log(`🔊 [Axis VAPIX] Triggering audio clip on camera at ${baseUrl}`);
+    this.logger.log(`🔊 [Axis VAPIX] Triggering audio clip on camera "${name}" at ${baseUrl}`);
 
     // Build the query string for /axis-cgi/mediaclip.cgi
     const queryParams = new URLSearchParams({
@@ -56,33 +57,21 @@ export class CctvService {
 
     this.logger.log(`📡 [Axis VAPIX Request] GET ${fullVapixUrl}`);
 
-    // Strip sensitive fields before persisting
-    const { password: _pw, simulateError: _sim, ...safePayload } = dto;
-
     try {
-      // Simulate error responses when requested
-      if (simulateError === '400') {
-        const errorMessage = `400 Bad Request: Clip index '${clip}' not found or invalid audio parameters on camera ${cameraIp}`;
-        throw new BadRequestException(`Axis VAPIX 400 Bad Request: ${errorMessage}`);
-      }
-
-      if (simulateError === '500') {
-        const errorMessage = `500 Internal Server Error: Audio subsystem on camera ${cameraIp}:${port} is unreachable or busy`;
-        throw new InternalServerErrorException(`Axis VAPIX 500 Internal Server Error: ${errorMessage}`);
-      }
-
       // Realistic Axis VAPIX response according to official documentation: "OK\nplaying=<clip>"
       const rawVapixResponse = `OK\\nplaying=${clip}`;
       this.logger.log(`📥 [Axis VAPIX Response] HTTP 200 OK (Content-Type: text/plain)`);
       this.logger.log(`📄 [Axis VAPIX Body] "${rawVapixResponse}"`);
       this.logger.log(
-        `✅ [Axis VAPIX] Sound playing on camera speaker (${cameraIp}). It will automatically stop when the clip completes.`,
+        `✅ [Axis VAPIX] Sound playing on camera speaker "${name}" (${cameraIp}). It will automatically stop when the clip completes.`,
       );
 
       // Build the response
       const response = {
         status: 'playing',
         camera: {
+          cameraId,
+          name,
           ip: cameraIp,
           port,
           protocol,
@@ -111,8 +100,8 @@ export class CctvService {
       // Persist successful trigger to audit logs
       await this.auditLogsService.create({
         action: 'trigger-sound',
-        cameraIp,
-        requestPayload: safePayload,
+        cameraId,
+        requestPayload: { cameraId: dto.cameraId },
         responsePayload: response,
         status: 'success',
       });
@@ -138,8 +127,8 @@ export class CctvService {
       try {
         await this.auditLogsService.create({
           action: 'trigger-sound',
-          cameraIp,
-          requestPayload: safePayload,
+          cameraId,
+          requestPayload: { cameraId: dto.cameraId },
           responsePayload: errorPayload,
           status: 'error',
           errorMessage: message,
