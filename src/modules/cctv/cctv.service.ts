@@ -1,5 +1,12 @@
-import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import DigestClient from 'digest-fetch';
 import { AuditLogsService } from '../audit-logs/audit-logs.service.js';
 import { CamerasService } from '../cameras/cameras.service.js';
 import { TriggerSoundDTO } from './dto/trigger-sound.dto.js';
@@ -34,6 +41,7 @@ export class CctvService {
         port,
         protocol,
         username,
+        password,
         clip,
         volume,
         repeat,
@@ -57,14 +65,45 @@ export class CctvService {
       });
 
       const cgiPath = `/axis-cgi/mediaclip.cgi?${queryParams.toString()}`;
+      const cameraUrl = `${protocol}://${cameraIp}:${port}${cgiPath}`;
       const fullVapixUrl = `${protocol}://${authDisplay}${cameraIp}:${port}${cgiPath}`;
 
       this.logger.log(`📡 [Axis VAPIX Request] GET ${fullVapixUrl}`);
 
-      // Realistic Axis VAPIX response according to official documentation: "OK\nplaying=<clip>"
-      const rawVapixResponse = `OK\\nplaying=${clip}`;
-      this.logger.log(`📥 [Axis VAPIX Response] HTTP 200 OK (Content-Type: text/plain)`);
-      this.logger.log(`📄 [Axis VAPIX Body] "${rawVapixResponse}"`);
+      let cameraStatusCode = 200;
+      let cameraContentType = 'text/plain';
+      let rawVapixResponse = '';
+
+      try {
+        const client = username && password ? new DigestClient(username, password) : null;
+        const fetchFn = client ? client.fetch.bind(client) : fetch;
+
+        const cameraRes = await fetchFn(cameraUrl, {
+          method: 'GET',
+          signal: AbortSignal.timeout(10000),
+        });
+
+        cameraStatusCode = cameraRes.status;
+        cameraContentType = cameraRes.headers.get('content-type') || 'text/plain';
+        rawVapixResponse = await cameraRes.text();
+
+        this.logger.log(`📥 [Axis VAPIX Response] HTTP ${cameraStatusCode} (Content-Type: ${cameraContentType})`);
+        this.logger.log(`📄 [Axis VAPIX Body] "${rawVapixResponse.trim()}"`);
+
+        if (!cameraRes.ok) {
+          throw new HttpException(
+            `Axis camera returned HTTP ${cameraStatusCode}: ${rawVapixResponse.trim() || cameraRes.statusText}`,
+            cameraStatusCode,
+          );
+        }
+      } catch (reqErr: unknown) {
+        if (reqErr instanceof HttpException) {
+          throw reqErr;
+        }
+        const errMsg = reqErr instanceof Error ? reqErr.message : String(reqErr);
+        throw new BadGatewayException(`Failed to connect to Axis camera at ${cameraIp}:${port} - ${errMsg}`);
+      }
+
       this.logger.log(
         `✅ [Axis VAPIX] Sound playing on camera speaker "${name}" (${cameraIp}). It will automatically stop when the clip completes.`,
       );
@@ -93,8 +132,8 @@ export class CctvService {
           url: `${protocol}://${cameraIp}:${port}${cgiPath}`,
         },
         cameraResponse: {
-          statusCode: 200,
-          contentType: 'text/plain',
+          statusCode: cameraStatusCode,
+          contentType: cameraContentType,
           body: rawVapixResponse,
         },
         triggeredAt: new Date().toISOString(),
