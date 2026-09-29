@@ -1,0 +1,55 @@
+name: sumiden-voice-service
+
+services:
+  sumiden-db:
+    image: postgres:17-alpine
+    container_name: sumiden-voice-service-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-sumiden}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - sumiden_db_data:/var/lib/postgresql/data
+    networks:
+      - sumiden-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sumiden}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: geoplanoperation/sumiden-voice-service:aibox
+    container_name: sumiden-voice-service-api
+    restart: always
+    ports:
+      - "0.0.0.0:8000:8000"
+    environment:
+      - NODE_ENV=production
+      - PORT=8000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@sumiden-db:5432/${POSTGRES_DB:-sumiden}?schema=public
+      - CORS_ALLOWED_ORIGIN=*
+    depends_on:
+      sumiden-db:
+        condition: service_healthy
+    networks:
+      - sumiden-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/api/v1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  sumiden_db_data:
+
+networks:
+  sumiden-net:
+    driver: bridge
