@@ -1,114 +1,229 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Sumiden Voice Service
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+An edge audio alert and voice notification microservice designed to control Axis network speakers and AI CCTV cameras via the Axis VAPIX Media Clip API. Built with NestJS, Prisma, and PostgreSQL.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Features
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- **Automated VAPIX Playback**: Directly triggers stored media audio clips on Axis network speakers and cameras over local LAN using Digest/Basic authentication.
+- **Dynamic Device Management**: Register, update, and manage multiple speaker devices with auto-generated incremental IDs (`CAM-0001`, `CAM-0002`).
+- **Comprehensive Audit Trail**: Every trigger attempt (both success and failure) is recorded with full request/response payloads in PostgreSQL.
+- **API Key Security**: Endpoints are protected with hashed API keys.
+- **Ubuntu AI Box Ready**: One-command background daemon deployment with automated boot recovery and container health checks.
 
-## Project setup
+---
 
-```bash
-$ npm install
-```
+## Prerequisites
 
-## Compile and run the project
+- **Host OS**: Ubuntu Linux (or any modern Linux distribution)
+- **Container Runtime**: Docker & Docker Compose (`docker-compose-v2` recommended)
+- **Network**: The host machine / AI Box must be connected to the same local network (LAN / VLAN) as the Axis speakers.
+- *(Optional for direct node dev)*: Node.js 22+ and PostgreSQL 17
+
+---
+
+## Quick Start (Ubuntu AI Box Deployment)
+
+### 1. Configure Environment Variables
+
+Create or verify the `.env` file in the project root:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+NODE_ENV=production
+PORT=8000
+DATABASE_URL="postgresql://postgres:password@sumiden-db:5432/sumiden?schema=public"
+CORS_ALLOWED_ORIGIN=*
 ```
 
-## Run tests
+### 2. Launch the Background Service
+
+Run the provided AI Box deployment script. This starts PostgreSQL and the Voice Service API in the background with `restart: always` (auto-starts on system boot):
 
 ```bash
-# unit tests
-$ npm run test
+# Make script executable
+chmod +x deploy-aibox.sh
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+# Start service in the background
+./deploy-aibox.sh start
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 3. Verify Health & Background Status
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Check container status
+./deploy-aibox.sh status
+
+# Follow live logs
+./deploy-aibox.sh logs
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+The service is healthy once `http://127.0.0.1:8000/api/v1` returns an HTTP 200 response.
 
-## Observability
+---
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+## Step-by-Step Guide: Managing Devices & Triggering Sound
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+### Step 1: Generate an API Key
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+Triggering audio and accessing protected endpoints requires an API Key. Generate one via:
 
-## Resources
+```bash
+curl -X POST http://localhost:8000/api/v1/api-keys \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Edge AI Box Client"
+  }'
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+**Sample Response:**
+```json
+{
+  "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+  "name": "Edge AI Box Client",
+  "apiKey": "svs_live_sample_key_1234567890abcdef",
+  "prefix": "svs_live_samp",
+  "createdAt": "2026-09-29T12:00:00.000Z"
+}
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+> [!IMPORTANT]
+> Store the returned `apiKey` securely. It is only displayed once upon creation and is stored as a secure hash in the database.
 
-## Support
+---
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Step 2: Register a Speaker / Device
 
-## Stay in touch
+Register your network speaker using its local IP, credentials, and default clip index:
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```bash
+curl -X POST http://localhost:8000/api/v1/cameras \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Sample Gate Speaker",
+    "cameraIp": "192.168.1.100",
+    "port": 80,
+    "protocol": "http",
+    "username": "sample_user",
+    "password": "sample_password",
+    "clip": 0,
+    "volume": 100
+  }'
+```
+
+#### Field Reference:
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | `string` | **Yes** | — | Human-readable name for the device |
+| `cameraIp` | `string` | **Yes** | — | Local IP address or hostname of the speaker |
+| `port` | `number` | No | `80` | HTTP/HTTPS port (standard is 80) |
+| `protocol` | `'http' \| 'https'` | No | `'http'` | Connection protocol |
+| `username` | `string` | No | — | Axis device administrator or operator username |
+| `password` | `string` | No | — | Axis device password |
+| `clip` | `number` | No | `0` | Zero-indexed audio clip to play (`0` = first clip on device) |
+| `volume` | `number` | No | `100` | Playback volume percentage (0–1000, 100 = 100%) |
+| `repeat` | `number` | No | `0` | Repeat count (`0` = play once, `-1` = loop) |
+
+**Sample Response:**
+```json
+{
+  "id": "e4f5a6b7-c8d9-0123-4567-89abcdef0123",
+  "cameraId": "CAM-0001",
+  "name": "Sample Gate Speaker",
+  "cameraIp": "192.168.1.100",
+  "port": 80,
+  "protocol": "http",
+  "clip": 0,
+  "volume": 100,
+  "repeat": 0,
+  "isActive": true,
+  "createdAt": "2026-09-29T12:05:00.000Z",
+  "updatedAt": "2026-09-29T12:05:00.000Z"
+}
+```
+
+Notice the assigned **`cameraId`** (e.g. `CAM-0001`). Use this ID to trigger audio clips.
+
+---
+
+### Step 3: Trigger Sound Playback
+
+Send a trigger request using the `cameraId` and your `x-api-key`:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/cctv/trigger-sound \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: svs_live_sample_key_1234567890abcdef" \
+  -d '{
+    "cameraId": "CAM-0001"
+  }'
+```
+
+**Sample Response:**
+```json
+{
+  "status": "playing",
+  "camera": {
+    "cameraId": "CAM-0001",
+    "name": "Sample Gate Speaker",
+    "ip": "192.168.1.100",
+    "port": 80,
+    "protocol": "http",
+    "authenticatedUser": "sample_user"
+  },
+  "clip": 0,
+  "volume": 100,
+  "repeat": 0,
+  "device": {
+    "audiodeviceid": 0,
+    "audiooutputid": 0
+  },
+  "vapixCgi": {
+    "method": "GET",
+    "path": "/axis-cgi/mediaclip.cgi",
+    "url": "http://192.168.1.100:80/axis-cgi/mediaclip.cgi?action=play&clip=0&volume=100"
+  },
+  "cameraResponse": {
+    "statusCode": 200,
+    "contentType": "text/plain",
+    "body": "OK\nplaying=0"
+  },
+  "triggeredAt": "2026-09-29T12:10:00.000Z"
+}
+```
+
+---
+
+## Device & Log Management Endpoints
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/v1/cameras` | Public | Register a new speaker / camera |
+| `GET` | `/api/v1/cameras` | API Key | List all active registered devices |
+| `GET` | `/api/v1/cameras/:id` | API Key | Get details of a single device (by UUID or `CAM-XXXX`) |
+| `PATCH` | `/api/v1/cameras/:id` | API Key | Update device configuration (IP, clip, volume, etc.) |
+| `DELETE` | `/api/v1/cameras/:id` | API Key | Deactivate a device |
+| `POST` | `/api/v1/cctv/trigger-sound` | API Key | Trigger audio clip playback on a device |
+| `GET` | `/api/v1/audit-logs` | API Key | Retrieve paginated history of all trigger events |
+| `POST` | `/api/v1/api-keys` | Public | Create a new API key |
+| `GET` | `/api/v1/api-keys` | Public | List active API keys |
+
+---
+
+## AI Box Daemon Management (`deploy-aibox.sh`)
+
+| Command | Action |
+|---|---|
+| `./deploy-aibox.sh start` | Build and start containers in the background (default) |
+| `./deploy-aibox.sh stop` | Stop all background service containers |
+| `./deploy-aibox.sh restart` | Restart background service |
+| `./deploy-aibox.sh status` | Display status and port mappings |
+| `./deploy-aibox.sh logs` | Stream live container logs |
+| `sudo ./deploy-aibox.sh systemd` | Install and enable an Ubuntu systemd service unit |
+
+---
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+UNLICENSED (Internal Geoplan / Sumiden Project)
