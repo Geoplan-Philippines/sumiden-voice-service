@@ -1,60 +1,44 @@
-# ── Stage 1: Install dependencies ──────────────────────────────────
-FROM node:24-alpine AS deps
-
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
-
-# ── Stage 2: Build ─────────────────────────────────────────────────
+# ── Stage 1: Build ─────────────────────────────────────────────────
 FROM node:24-alpine AS build
 
 WORKDIR /app
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json package-lock.json tsconfig.json tsconfig.build.json nest-cli.json ./
+COPY package.json package-lock.json tsconfig.json tsconfig.build.json nest-cli.json prisma.config.ts ./
 COPY prisma ./prisma
-COPY prisma.config.ts ./
+
+# Install dependencies, generate Prisma client, and clean cache to minimize inodes
+RUN npm ci --ignore-scripts --prefer-offline \
+    && npm cache clean --force \
+    && DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate
+
 COPY src ./src
+RUN npm run build
 
-# Generate Prisma Client and build the NestJS app
-# DATABASE_URL is required by prisma.config.ts but not used during generate
-RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" npx prisma generate && npm run build
-
-# ── Stage 3: Production ───────────────────────────────────────────
+# ── Stage 2: Production ───────────────────────────────────────────
 FROM node:24-alpine AS production
 
 WORKDIR /app
 
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init \
+    && addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Copy only production dependencies
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts --omit=dev
+COPY --chown=appuser:appgroup package.json package-lock.json prisma.config.ts ./
+COPY --chown=appuser:appgroup prisma ./prisma
 
-# Copy Prisma schema + generated client + engines from build stage
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
-COPY --from=build /app/node_modules/@prisma/engines ./node_modules/@prisma/engines
-COPY prisma ./prisma
-COPY prisma.config.ts ./
-
-# Copy compiled output
-COPY --from=build /app/dist ./dist
+# Copy node_modules and built dist from build stage (avoids second npm ci and inode exhaustion)
+COPY --chown=appuser:appgroup --from=build /app/node_modules ./node_modules
+COPY --chown=appuser:appgroup --from=build /app/dist ./dist
 
 # Copy entrypoint
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Run as non-root
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-RUN chown -R appuser:appgroup /app
 USER appuser
 
 ENV NODE_ENV=production
-ENV PORT=8000
+ENV PORT=8005
 
-EXPOSE 8000
+EXPOSE 8005
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["docker-entrypoint.sh"]

@@ -14,7 +14,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.aibox.yml"
 SERVICE_NAME="sumiden-voice-service"
-PORT="8000"
+PORT="${PORT:-8005}"
+if [ -f "${SCRIPT_DIR}/.env" ]; then
+  ENV_PORT=$(grep -E '^PORT=' "${SCRIPT_DIR}/.env" | cut -d '=' -f2 | tr -d '"' | tr -d "'" || true)
+  if [ -n "${ENV_PORT}" ]; then
+    PORT="${ENV_PORT}"
+  fi
+fi
 HEALTH_URL="http://127.0.0.1:${PORT}/api/v1"
 MAX_HEALTH_RETRIES=30
 RETRY_INTERVAL=2
