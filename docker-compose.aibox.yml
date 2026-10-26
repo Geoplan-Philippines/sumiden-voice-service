@@ -29,10 +29,10 @@ services:
     container_name: sumiden-voice-service-api
     restart: always
     ports:
-      - "0.0.0.0:8000:8000"
+      - "0.0.0.0:${PORT:-8005}:${PORT:-8005}"
     environment:
       - NODE_ENV=production
-      - PORT=8000
+      - PORT=${PORT:-8005}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@sumiden-db:5432/${POSTGRES_DB:-sumiden}?schema=public
       - CORS_ALLOWED_ORIGIN=*
     depends_on:
@@ -41,7 +41,7 @@ services:
     networks:
       - sumiden-net
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/api/v1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${PORT:-8005}/api/v1 || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

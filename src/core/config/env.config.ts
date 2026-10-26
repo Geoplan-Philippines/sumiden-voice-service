@@ -6,11 +6,11 @@ const envSchema = z.object({
     .enum(['development', 'production', 'test'])
     .default('development'),
 
-  PORT: z.coerce.number().int().positive().default(8000),
+  PORT: z.coerce.number().int().positive().default(8005),
 
   DATABASE_URL: z.url().startsWith('postgresql://'),
 
-  CORS_ALLOWED_ORIGIN: z.url(),
+  CORS_ALLOWED_ORIGIN: z.string().default('*'),
 });
 
 const parsed = envSchema.safeParse(process.env);

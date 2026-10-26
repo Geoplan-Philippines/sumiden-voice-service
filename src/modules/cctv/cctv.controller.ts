@@ -1,10 +1,8 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
-import { ApiKeyGuard } from '../api-keys/api-key.guard.js';
+import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { CctvService } from './cctv.service.js';
 import { TriggerSoundDTO } from './dto/trigger-sound.dto.js';
 
 @Controller('cctv')
-@UseGuards(ApiKeyGuard)
 export class CctvController {
   constructor(private readonly cctvService: CctvService) {}
 
